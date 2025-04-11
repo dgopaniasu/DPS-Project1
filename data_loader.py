@@ -1,3 +1,6 @@
+# Darsh Gopani
+# ID: 1233606649
+
 import pyarrow.parquet as pq
 import pandas as pd
 from neo4j import GraphDatabase
@@ -58,49 +61,50 @@ class DataLoader:
         trips.to_csv(save_loc, index=False, date_format="%Y-%m-%dT%H:%M:%S")
 
         # TODO: Your code here
+        
         with self.driver.session() as session:
-        # 1. Ensure uniqueness constraint on Location labels
-            print("Establishing uniqueness for Location nodes...")
+            # Step 1: Set up a unique constraint on the Location nodes.
+            print("Applying unique constraint on Location nodes...")
             session.run("""
                 CREATE CONSTRAINT IF NOT EXISTS
                 FOR (loc:Location)
                 REQUIRE loc.name IS UNIQUE
             """)
 
-            # 2. Create nodes for pickup locations
-            print("Loading pickup Location nodes...")
+            # Step 2: Insert distinct pickup locations.
+            print("Creating nodes for pickup locations...")
             session.run("""
-                LOAD CSV WITH HEADERS FROM 'file:///yellow_tripdata_2022-03.csv' AS line
-                WITH DISTINCT toInteger(line.PULocationID) AS pickupId
-                MERGE (:Location {name: pickupId})
+                LOAD CSV WITH HEADERS FROM 'file:///yellow_tripdata_2022-03.csv' AS record
+                WITH DISTINCT toInteger(record.PULocationID) AS pickupID
+                MERGE (:Location {name: pickupID})
             """)
 
-            # 3. Create nodes for dropoff locations
-            print("Loading dropoff Location nodes...")
+            # Step 3: Insert distinct dropoff locations.
+            print("Creating nodes for dropoff locations...")
             session.run("""
-                LOAD CSV WITH HEADERS FROM 'file:///yellow_tripdata_2022-03.csv' AS line
-                WITH DISTINCT toInteger(line.DOLocationID) AS dropoffId
-                MERGE (:Location {name: dropoffId})
+                LOAD CSV WITH HEADERS FROM 'file:///yellow_tripdata_2022-03.csv' AS record
+                WITH DISTINCT toInteger(record.DOLocationID) AS dropoffID
+                MERGE (:Location {name: dropoffID})
             """)
 
-            # 4. Build TRIP relationships from pickup to dropoff
-            print("Creating TRIP relationships between Locations...")
+            # Step 4: Create TRIP relationships between each pickup and corresponding dropoff.
+            print("Establishing TRIP relationships...")
             session.run("""
-                LOAD CSV WITH HEADERS FROM 'file:///yellow_tripdata_2022-03.csv' AS entry
-                MATCH (startLoc:Location {name: toInteger(entry.PULocationID)})
-                MATCH (endLoc:Location   {name: toInteger(entry.DOLocationID)})
-                CREATE (startLoc)-[:TRIP {
-                distance:  toFloat(entry.trip_distance),
-                fare:      toFloat(entry.fare_amount),
-                pickup_dt: datetime(entry.tpep_pickup_datetime),
-                dropoff_dt:datetime(entry.tpep_dropoff_datetime)
-                }]->(endLoc)
+                LOAD CSV WITH HEADERS FROM 'file:///yellow_tripdata_2022-03.csv' AS row
+                MATCH (origin:Location {name: toInteger(row.PULocationID)})
+                MATCH (destination:Location {name: toInteger(row.DOLocationID)})
+                CREATE (origin)-[:TRIP {
+                    distance:  toFloat(row.trip_distance),
+                    fare:      toFloat(row.fare_amount),
+                    pickup_dt: datetime(row.tpep_pickup_datetime),
+                    dropoff_dt: datetime(row.tpep_dropoff_datetime)
+                }]->(destination)
             """)
 
-            # 5. Validate results
-            total_locations = session.run("MATCH (l:Location) RETURN count(l) AS c").single()["c"]
-            total_trips = session.run("MATCH ()-[r:TRIP]->() RETURN count(r) AS c").single()["c"]
-            print(f"Data load complete: {total_locations} Location nodes, {total_trips} TRIP relationships.")
+            # Step 5: Verify the insertion by counting nodes and relationships.
+            count_locations = session.run("MATCH (n:Location) RETURN count(n) AS total").single()["total"]
+            count_trips = session.run("MATCH ()-[r:TRIP]->() RETURN count(r) AS total").single()["total"]
+            print(f"Data load complete: {count_locations} Location nodes created, {count_trips} TRIP relationships established.")
 
 
 def main():
